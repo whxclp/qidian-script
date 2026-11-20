@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         新起点
 // @namespace    local.qnyh.qidian
-// @version      3.1.2
+// @version      3.1.3
 // @description  新起点视频下载：纯观看不主动下载，开开关才抓；必须真实听完到片尾才允许合并；换流/换集强制清锁定残留。
 // @license      GPL-3.0-only
 // @updateURL    https://raw.githubusercontent.com/whxclp/qidian-script/main/qidian.user.js
@@ -24,7 +24,7 @@
   const _unsafe = (typeof unsafeWindow !== "undefined" ? unsafeWindow : window);
   const _GMxhr = (typeof GM_xmlhttpRequest === "function" ? GM_xmlhttpRequest : null);
   const _GMinfo = (typeof GM_info !== "undefined" ? GM_info : null);
-  const VERSION = (_GMinfo && _GMinfo.script && _GMinfo.script.version) || "3.1.2";
+  const VERSION = (_GMinfo && _GMinfo.script && _GMinfo.script.version) || "3.1.3";
 
   // 页面加载第一时间：下载开关默认关，清掉旧版持久化状态
   try { localStorage.setItem("qidian_auto", "0"); } catch (e) {}
@@ -1052,6 +1052,17 @@
   }
 
   function isDouyin() { return /douyin|iesdouyin/.test(HOST); }
+  function isLiveDouyin() {
+    if (!isDouyin()) return false;
+    if (/live\.douyin\.com/.test(HOST)) return true;
+    return /^\/(follow|root)\/live\//.test(location.pathname) ||
+      !!document.querySelector('[data-e2e="feed-live"], [data-e2e="living-container"]');
+  }
+  // 查找「抖音优化」插件挂在播放器上的解析按钮
+  function findOptimizeParseBtn() {
+    const sel = ".gm-video-filter-parse-btn";
+    return document.querySelector(sel);
+  }
 
   // ===== 转封装（Mediabunny，库在文件尾部内联） =====
   function MB() { return globalThis.Mediabunny; }
@@ -1718,9 +1729,18 @@
       '<div>' + chipRow(["①", "②", "③"]) + chipRow(["④", "⑤"]) + '</div>' +
       '</div>';
 
-    // 抖音：下载由「抖音优化」插件完成，新起点不出条目
+    // 抖音：下载由「抖音优化」插件完成，新起点不出条目；提供一键唤起优化插件解析
     if (dy) {
-      html += '<div style="padding:12px 14px;color:#8a93a2;font-size:12px;line-height:1.7;">抖音视频/音频下载请使用「抖音优化」插件的解析按钮，本面板不重复解析。</div>';
+      if (isLiveDouyin()) {
+        html += '<div style="padding:12px 14px;color:#8a93a2;font-size:12px;line-height:1.7;">当前为直播页面：「抖音优化」插件不解析直播流，新起点也不抓直播。录播/短视频请切到作品页再解析下载。</div>';
+      } else {
+        const hasBtn = !!findOptimizeParseBtn();
+        html += '<div style="padding:12px 14px;border-bottom:1px solid #eee;">' +
+          '<div style="color:#333;font-size:12px;line-height:1.7;margin-bottom:8px;">本面板不重复解析抖音，下载由「抖音优化」插件完成。点下面按钮直接唤起它的解析：</div>' +
+          '<a href="javascript:;" data-qd-opt-parse style="display:inline-block;padding:6px 14px;border-radius:10px;font-weight:700;font-size:12px;color:#fff;text-decoration:none;background:#ff2d55;">唤起「抖音优化」解析</a>' +
+          '<div style="color:#9aa4b2;font-size:11px;margin-top:6px;">' + (hasBtn ? "已检测到优化插件解析按钮" : "未检测到优化插件按钮：请确认「抖音优化」脚本已启用，或把鼠标移到播放器控制栏点「解析信息」") + '</div>' +
+          '</div>';
+      }
     }
 
     // 直链列表（①②）：抖音场景由优化插件处理，不显示通用直链列表；其余场景只列真媒体
@@ -1790,6 +1810,16 @@
     if (sw) sw.addEventListener("click", () => toggleAuto());
     const segMerge = el.querySelector("[data-qd-seg-merge]");
     if (segMerge) segMerge.addEventListener("click", () => mergeSegments(sortedSegs(segItems()), el.querySelector("[data-qd-seg-progress]")));
+    const optParse = el.querySelector("[data-qd-opt-parse]");
+    if (optParse) optParse.addEventListener("click", () => {
+      const btn = findOptimizeParseBtn();
+      if (btn) {
+        toast("正在唤起「抖音优化」解析…", "");
+        btn.click();
+      } else {
+        toast("未找到优化插件解析按钮，请确认「抖音优化」已启用，或在播放器控制栏点「解析信息」", "warn");
+      }
+    });
   }
 
   function toggleAuto() {
