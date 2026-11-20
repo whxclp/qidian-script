@@ -1086,7 +1086,7 @@
     while (node && depth < (maxDepth || 12)) {
       const r = cb(node);
       if (r && r.isFind) return r.data;
-      node = node.return;
+      node = node.return || (node.alternate && node.alternate.return) || null;
       depth++;
     }
     return null;
@@ -1109,7 +1109,8 @@
     try {
       put(j.aweme_detail);
       if (Array.isArray(j.aweme_list)) j.aweme_list.forEach(put);
-      if (Array.isArray(j.data)) j.data.forEach((it) => { if (it && typeof it === "object") put(it.aweme_info || it.aweme_detail || it); });
+      if (Array.isArray(j.data)) j.data.forEach((it) => { if (it && typeof it === "object") put(it.aweme_info || it.aweme_detail || it.aweme || it); });
+      if (Array.isArray(j.cards)) j.cards.forEach((c) => { if (c && typeof c === "object") put(c.aweme_info || c.aweme_detail || c.aweme || c); });
     } catch (e2) {}
     while (dyRaw.size > 30) dyRaw.delete(dyRaw.keys().next().value);
   }
@@ -1135,6 +1136,7 @@
           const mp = target && target.memoizedProps;
           if (mp && typeof mp === "object") {
             if (mp.awemeInfo && typeof mp.awemeInfo === "object") return { isFind: true, data: mp.awemeInfo };
+            if (mp.originData && typeof mp.originData === "object") return { isFind: true, data: mp.originData };
             return { isFind: false, data: target.return || null };
           }
           return { isFind: false, data: null };
