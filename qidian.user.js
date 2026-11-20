@@ -732,6 +732,8 @@
   // ===== 锁定 / 解锁：抓全未合并期间锁住播放器，换流/收尾全量强制复位 =====
   function lockPlayer() {
     try {
+      // 抖音/直播为整段直链，不参与分段锁定，直接拒绝
+      if (isDouyin() || isLiveDouyin()) { log.info("抖音页跳过锁播放器"); return; }
       const vids = Array.from(document.querySelectorAll("video") || []);
       const v = vids.find((x) => x && !x.paused && isFinite(x.duration)) || vids.find((x) => x && isFinite(x.duration) && x.duration > 0) || vids[0];
       if (!v || v.__sxpoLocked) return;
@@ -795,7 +797,7 @@
     state.navBlock = !!on;
     navBlockApply();
   }
-  function navBlockLink() { if (!state.navBlock) navBlock(true); }
+  function navBlockLink() { if (isDouyin() || isLiveDouyin()) return; if (!state.navBlock) navBlock(true); }
   function navBlockRelease() { if (state.navBlock) navBlock(false); }
 
   function navBlockApply() {
@@ -856,6 +858,11 @@
     const tick = () => {
       try {
         armVideoEnded();
+        // 抖音/直播：整段直链，不允许任何分段锁定/拦页残留，每帧兜底复位
+        if (isDouyin()) {
+          const locked = Array.from(document.querySelectorAll("video") || []).some((v) => v && v.__sxpoLocked);
+          if (state.navBlock || locked) { unlockPlayer(); navBlockRelease(); resetCaptureState(); }
+        }
         const sig = pageSig();
         if (sig === state.pageSig) {
           // 周期兜底：锁定态 video 身份已变 → 清旧锁
