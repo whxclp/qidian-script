@@ -881,13 +881,15 @@
               }
             }
           } catch (eL) {}
-          // 同一集：周期跑分段固化/增量合并
-          const now = Date.now();
-          if (now - (state.segAutoLast || 0) > 3000) {
-            state.segAutoLast = now;
-            preloadGroup();
-            incrementalTick();
-            autoMergeTick();
+          // 同一集：周期跑分段固化/增量合并（抖音/直播为整段直链，跳过分段链路）
+          if (!isDouyin()) {
+            const now = Date.now();
+            if (now - (state.segAutoLast || 0) > 3000) {
+              state.segAutoLast = now;
+              preloadGroup();
+              incrementalTick();
+              autoMergeTick();
+            }
           }
           return;
         }
