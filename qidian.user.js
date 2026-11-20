@@ -1203,11 +1203,16 @@
       if (typeof node.url === "string" && node.url) return node.url;
       return "";
     };
+    // 真实可下载媒体地址判定：剔除图片/跳转接口/水印下载
+    const REAL_MEDIA_URL = (u) => typeof u === "string" && /^https?:/i.test(u) &&
+      !/\.(?:webp|jpe?g|png|gif|avif|heic)(?:\?|#|$)/i.test(u) &&
+      !/\/aweme\/v1\/play\//i.test(u) &&
+      (/\.mp4(?:\?|#|$)/i.test(u) || /\/video\/tos\//i.test(u) || /\/vod\/tos\//i.test(u) || /\/media\/video\//i.test(u));
     const normBitRate = (it) => {
       if (!it || typeof it !== "object") return null;
       const addr = it.playAddr || it.play_addr || it.playApi || it.play_api || it;
       const url = pickUrl(addr) || pickUrl(it.downloadAddr || it.download_addr);
-      if (!url) return null;
+      if (!url || !REAL_MEDIA_URL(url)) return null;
       return {
         url,
         size: (addr && (addr.dataSize ?? addr.data_size)) || it.dataSize || it.data_size || 0,
@@ -1215,6 +1220,7 @@
         h265: !!(it.isH265 || it.is_h265),
         width: addr && addr.width,
         height: addr && addr.height,
+        direct: true,
       };
     };
     const cands = [];
@@ -1228,17 +1234,15 @@
         pushCand(normBitRate(rawV.downloadAddr || rawV.download_addr));
       } catch (e2) {}
     });
-    // 兜底深度扫描：收集整棵树里像播放地址的 URL
+    // 兜底深度扫描：仅当 bitRate/play_addr 主路径未取到真实媒体时启用，剔跳转/图片/水印
     try {
       const seenNodes = new WeakSet();
       let budget = 6000;
-      const isVideoUrl = (u) => typeof u === "string" && /^https?:/i.test(u) &&
-        !/\.(?:webp|jpe?g|png|gif|avif|heic)(?:\?|#|$)/i.test(u) &&
-        (/\.mp4(?:\?|#|$)/i.test(u) || /\/video\/tos\//i.test(u) || /\/aweme\/v1\/play\//i.test(u));
+      const isVideoUrl = (u) => REAL_MEDIA_URL(u);
       const walk = (obj, depth, gearHint, keyName) => {
         if (budget <= 0) return;
         if (typeof obj === "string") {
-          if (isVideoUrl(obj) && (/url|src|play|download|addr|api/i.test(String(keyName || "")) || /\/aweme\/v1\/play\//i.test(obj))) {
+          if (isVideoUrl(obj) && (/url|src|play|download|addr|api/i.test(String(keyName || "")))) {
             pushCand({ url: obj, size: 0, gear: gearHint || "", watermark: /download/i.test(String(keyName || "")) });
           }
           return;
@@ -1265,12 +1269,16 @@
     }
     const seen = new Set();
     const videos = cands.filter((c) => {
-      const key = c.url.split("?")[0];
+      if (!REAL_MEDIA_URL(c.url)) return false;
+      // 归一化去重：去掉水印/签名/回调等易变查询参数后按路径判重
+      let key = c.url.split("?")[0];
+      try { const u = new URL(c.url); const drop = /watermark|wm_|sign|signature|callback|time|ts|nonce/i; const keep = []; u.searchParams.forEach((v, k) => { if (!drop.test(k)) keep.push(k + "=" + v); }); key = u.origin + u.pathname + (keep.length ? "?" + keep.sort().join("&") : ""); } catch (e) {}
       if (seen.has(key)) return false;
       seen.add(key); return true;
     }).sort((a, b) => {
       const w = (a.watermark ? 1 : 0) - (b.watermark ? 1 : 0);
-      return w !== 0 ? w : (b.size || 0) - (a.size || 0);
+      if (w !== 0) return w;
+      return (b.size || 0) - (a.size || 0);
     });
     if (!videos.length) return [];
     const primary = srcList[0] || {};
@@ -1925,14 +1933,17 @@
       dragHandle.id = "qidian-panel-handle";
       dragHandle.style.cssText = "height:28px;cursor:move;display:flex;align-items:center;justify-content:center;color:#c0c6d0;font-size:12px;user-select:none;border-bottom:1px solid #f0f2f5;flex:none;position:relative;";
       dragHandle.textContent = "⋮⋮ 拖动移动面板";
-      const closeBtn = document.createElement("div");
+      const closeBtn = document.createElement("button");
       closeBtn.id = "qidian-panel-close";
+      closeBtn.type = "button";
       closeBtn.title = "关闭面板";
-      closeBtn.style.cssText = "position:absolute;right:10px;top:50%;transform:translateY(-50%);width:20px;height:20px;line-height:18px;text-align:center;border-radius:50%;color:#888;font-size:15px;cursor:pointer;user-select:none;";
+      closeBtn.style.cssText = "position:absolute;right:10px;top:50%;transform:translateY(-50%);width:22px;height:22px;padding:0;line-height:20px;text-align:center;border:none;border-radius:50%;background:transparent;color:#888;font-size:15px;cursor:pointer;user-select:none;";
       closeBtn.textContent = "✕";
       closeBtn.addEventListener("mouseenter", () => { closeBtn.style.background = "#f0f2f5"; closeBtn.style.color = "#333"; });
-      closeBtn.addEventListener("mouseleave", () => { closeBtn.style.background = ""; closeBtn.style.color = "#888"; });
-      closeBtn.addEventListener("click", (ev) => { ev.stopPropagation(); el.style.display = "none"; });
+      closeBtn.addEventListener("mouseleave", () => { closeBtn.style.background = "transparent"; closeBtn.style.color = "#888"; });
+      const closePanel = (ev) => { if (ev) { ev.stopPropagation(); ev.preventDefault(); } el.style.display = "none"; };
+      closeBtn.addEventListener("mousedown", closePanel);
+      closeBtn.addEventListener("click", closePanel);
       dragHandle.appendChild(closeBtn);
       const body = document.createElement("div");
       body.id = "qidian-panel-body";
