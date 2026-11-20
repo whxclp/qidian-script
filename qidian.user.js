@@ -1535,7 +1535,7 @@
 
   // ===== 面板：悬浮按钮 + 下载面板 =====
   const CHIP_COLOR = { "①": "#1677ff", "②": "#8e44ad", "③": "#ff2d55", "④": "#e6a23c", "⑤": "#67c23a" };
-  const CHIP_NAME = { "①": "① 普通直链下载", "②": "② 音频下载", "③": "③ 抖音下载", "④": "④ 普通合并下载", "⑤": "⑤ 分段合并下载" };
+  const CHIP_NAME = { "①": "① 普通直链下载", "②": "② 音频下载", "③": "③ 由抖音优化下载", "④": "④ 普通合并下载", "⑤": "⑤ 分段合并下载" };
 
   // ===== 悬浮元素拖拽：按钮与面板均可移动，位置持久化 =====
   const POS_KEY = "qidian_panel_pos";
@@ -1720,7 +1720,7 @@
       html += '<div style="padding:12px 14px;color:#8a93a2;font-size:12px;line-height:1.7;">抖音视频/音频下载请使用「抖音优化」插件的解析按钮，本面板不重复解析。</div>';
     }
 
-    // 直链列表（①②③）：抖音场景只走③抖音解析，不显示通用直链列表；其余场景只列真媒体
+    // 直链列表（①②）：抖音场景由优化插件处理，不显示通用直链列表；其余场景只列真媒体
     const direct = dy ? [] : sources.filter(isDirectMedia);
     if (direct.length) {
       html += '<div style="padding:10px 14px;border-bottom:1px solid #eee;"><div style="font-weight:700;margin-bottom:6px;">地址列表（点下载 / 复制地址）</div>';
