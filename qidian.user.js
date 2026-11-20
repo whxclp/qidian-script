@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         新起点
 // @namespace    local.qnyh.qidian
-// @version      3.1.3
+// @version      3.1.4
 // @description  新起点视频下载：纯观看不主动下载，开开关才抓；必须真实听完到片尾才允许合并；换流/换集强制清锁定残留。
 // @license      GPL-3.0-only
 // @updateURL    https://raw.githubusercontent.com/whxclp/qidian-script/main/qidian.user.js
@@ -24,7 +24,7 @@
   const _unsafe = (typeof unsafeWindow !== "undefined" ? unsafeWindow : window);
   const _GMxhr = (typeof GM_xmlhttpRequest === "function" ? GM_xmlhttpRequest : null);
   const _GMinfo = (typeof GM_info !== "undefined" ? GM_info : null);
-  const VERSION = (_GMinfo && _GMinfo.script && _GMinfo.script.version) || "3.1.3";
+  const VERSION = (_GMinfo && _GMinfo.script && _GMinfo.script.version) || "3.1.4";
 
   // 页面加载第一时间：下载开关默认关，清掉旧版持久化状态
   try { localStorage.setItem("qidian_auto", "0"); } catch (e) {}
@@ -504,11 +504,13 @@
             let ctF = "";
             try { ctF = String((response.headers && response.headers.get && response.headers.get("content-type")) || ""); } catch (e) {}
             sniffUrl(responseUrl, range, ctF, "video");
-            // 爱奇艺片名：JSON 响应异步解析
+            // 爱奇艺片名：JSON 响应异步解析；抖音 aweme 数据捕获
             if (isQy && !/\.(ts|m4s|mp4|m3u8|mpd|m4a|mp3)(\?|#|$)/i.test(responseUrl)) {
               let ct = "";
               try { ct = String((response.headers && response.headers.get && response.headers.get("content-type")) || ""); } catch (e) {}
-              if (/json/i.test(ct)) response.clone().text().then((t) => { captureQyTitle(t); }).catch(() => {});
+              if (/json/i.test(ct)) response.clone().text().then((t) => { captureQyTitle(t); if (isDouyin()) captureDyAweme(t); }).catch(() => {});
+            } else if (isDouyin() && /aweme|feed|detail|video/i.test(responseUrl)) {
+              response.clone().text().then(captureDyAweme).catch(() => {});
             }
           } catch (e) {}
           return response;
@@ -548,6 +550,12 @@
             try { t = !xhr.responseType || xhr.responseType === "text" ? xhr.responseText : ""; } catch (e) {}
             if (!t && xhr.response && typeof xhr.response === "object") { try { t = JSON.stringify(xhr.response); } catch (e) {} }
             if (t && /albumName|album_name|videoName|video_name|albumTitle|videoTitle/.test(t)) captureQyTitle(t);
+          }
+          if (isDouyin() && /aweme|feed|detail|video/i.test(responseUrl)) {
+            let t2 = "";
+            try { t2 = !xhr.responseType || xhr.responseType === "text" ? xhr.responseText : ""; } catch (e) {}
+            if (!t2 && xhr.response && typeof xhr.response === "object") { try { t2 = JSON.stringify(xhr.response); } catch (e) {} }
+            if (t2) captureDyAweme(t2);
           }
         } catch (e) {}
       });
@@ -1058,10 +1066,220 @@
     return /^\/(follow|root)\/live\//.test(location.pathname) ||
       !!document.querySelector('[data-e2e="feed-live"], [data-e2e="living-container"]');
   }
-  // 查找「抖音优化」插件挂在播放器上的解析按钮
-  function findOptimizeParseBtn() {
-    const sel = ".gm-video-filter-parse-btn";
-    return document.querySelector(sel);
+
+  // ===== React fiber 通用探测（不依赖外部 utils 库） =====
+  const FIBER_KEYS = ["__reactFiber$", "__reactInternalInstance$"];
+  const PROPS_KEYS = ["__reactProps$"];
+  function reactFiberOf(el) {
+    if (!el) return null;
+    for (const k of FIBER_KEYS) {
+      for (const key in el) {
+        if (key.indexOf(k) === 0) return el[key];
+      }
+    }
+    return null;
+  }
+  function reactPropsOf(el) {
+    if (!el) return null;
+    for (const k of PROPS_KEYS) {
+      for (const key in el) {
+        if (key.indexOf(k) === 0) return el[key];
+      }
+    }
+    return null;
+  }
+  // 沿 fiber 向上找含目标属性的节点（限深 12），callback 返回 { isFind, data }
+  function queryFiber(fiber, cb, maxDepth) {
+    let node = fiber, depth = 0;
+    while (node && depth < (maxDepth || 12)) {
+      const r = cb(node);
+      if (r && r.isFind) return r.data;
+      node = node.return || (node.alternate && node.alternate.return) || null;
+      depth++;
+    }
+    return null;
+  }
+
+  // ===== 抖音：解析当前视频的无水印直链 + 音频 =====
+  const dyRaw = new Map(); // awemeId -> { at, aw }
+
+  function captureDyAweme(text) {
+    if (!text || typeof text !== "string" || text.length > 12000000) return;
+    let j;
+    try { j = JSON.parse(text); } catch (e) { return; }
+    const put = (aw) => {
+      if (!aw || typeof aw !== "object") return;
+      const id = aw.aweme_id || aw.awemeId;
+      if (!id) return;
+      dyRaw.set(String(id), { at: Date.now(), aw });
+    };
+    try {
+      put(j.aweme_detail);
+      if (Array.isArray(j.aweme_list)) j.aweme_list.forEach(put);
+      if (Array.isArray(j.data)) j.data.forEach((it) => { if (it && typeof it === "object") put(it.aweme_info || it.aweme_detail || it.aweme || it); });
+      if (Array.isArray(j.cards)) j.cards.forEach((c) => { if (c && typeof c === "object") put(c.aweme_info || c.aweme_detail || c.aweme || c); });
+    } catch (e2) {}
+    while (dyRaw.size > 30) dyRaw.delete(dyRaw.keys().next().value);
+  }
+
+  function dyActiveAweme() {
+    try {
+      let v = document.querySelector('[data-e2e="feed-active-video"] video') || document.querySelector('[data-e2e="video-detail"] video');
+      if (!v) {
+        const list = Array.from(document.querySelectorAll("video")).filter((x) => { const r = x.getBoundingClientRect(); return r.width > 120 && r.height > 80; });
+        v = list.find((x) => !x.paused) || list[0];
+      }
+      const fibers = [];
+      try {
+        const pcs = Array.from(document.querySelectorAll(".basePlayerContainer"));
+        const pc = pcs.find((c) => { const x = c.querySelector("video"); return x && !x.paused; }) ||
+          pcs.find((c) => { const r = c.getBoundingClientRect(); return r.width > 200 && r.height > 150; }) || pcs[pcs.length - 1];
+        fibers.push(reactFiberOf(pc));
+      } catch (e2) {}
+      fibers.push(reactFiberOf(v));
+      for (const f of fibers) {
+        if (!f) continue;
+        const info = queryFiber(f, (target) => {
+          const mp = target && target.memoizedProps;
+          if (mp && typeof mp === "object") {
+            if (mp.awemeInfo && typeof mp.awemeInfo === "object") return { isFind: true, data: mp.awemeInfo };
+            if (mp.originData && typeof mp.originData === "object") return { isFind: true, data: mp.originData };
+            return { isFind: false, data: target.return || null };
+          }
+          return { isFind: false, data: null };
+        });
+        if (info) return info;
+      }
+    } catch (e) {}
+    return null;
+  }
+
+  function dyRawAweme() {
+    try {
+      if (!dyRaw.size) return null;
+      const sp = new URL(location.href).searchParams;
+      let id = sp.get("modal_id") || sp.get("aweme_id") || sp.get("vid") || "";
+      if (!id) { const m = /\/video\/(\d{8,})/.exec(location.pathname); if (m) id = m[1]; }
+      if (id && dyRaw.has(id)) return dyRaw.get(id).aw;
+      const dom = dyActiveAweme();
+      const want = String((dom && (dom.desc || (dom.music && dom.music.title))) || "").trim();
+      if (want) {
+        for (const rec of dyRaw.values()) {
+          const aw = (rec && rec.aw) || {};
+          const t = String(aw.desc || (aw.music && aw.music.title) || "");
+          if (t && (t.indexOf(want) >= 0 || want.indexOf(t.slice(0, 20)) >= 0)) return aw;
+        }
+      }
+      if (dyRaw.size === 1) return dyRaw.values().next().value.aw;
+    } catch (e) {}
+    return null;
+  }
+
+  function dySources(sig) {
+    if (!isDouyin()) return [];
+    const domAweme = dyActiveAweme();
+    const rawAweme = dyRawAweme();
+    const srcList = [];
+    if (rawAweme) srcList.push(rawAweme);
+    if (domAweme && domAweme !== rawAweme) srcList.push(domAweme);
+    if (!srcList.length) return [];
+
+    const pickUrl = (node) => {
+      if (!node || typeof node !== "object") return "";
+      const list = node.urlList || node.url_list;
+      if (Array.isArray(list)) { const hit = list.find((u) => typeof u === "string" && u); if (hit) return hit; }
+      if (typeof node.url === "string" && node.url) return node.url;
+      return "";
+    };
+    const normBitRate = (it) => {
+      if (!it || typeof it !== "object") return null;
+      const addr = it.playAddr || it.play_addr || it.playApi || it.play_api || it;
+      const url = pickUrl(addr) || pickUrl(it.downloadAddr || it.download_addr);
+      if (!url) return null;
+      return {
+        url,
+        size: (addr && (addr.dataSize ?? addr.data_size)) || it.dataSize || it.data_size || 0,
+        gear: it.gearName || it.gear_name || "",
+        h265: !!(it.isH265 || it.is_h265),
+        width: addr && addr.width,
+        height: addr && addr.height,
+      };
+    };
+    const cands = [];
+    const pushCand = (c) => { if (c && c.url) cands.push(c); };
+    srcList.forEach((aw) => {
+      try {
+        const rawV = (aw && aw.video) || {};
+        [Array.isArray(rawV.bitRateList) ? rawV.bitRateList : [], Array.isArray(rawV.bit_rate) ? rawV.bit_rate : []]
+          .forEach((list) => list.forEach((it) => pushCand(normBitRate(it))));
+        pushCand(normBitRate(rawV.playAddr || rawV.play_addr));
+        pushCand(normBitRate(rawV.downloadAddr || rawV.download_addr));
+      } catch (e2) {}
+    });
+    // 兜底深度扫描：收集整棵树里像播放地址的 URL
+    try {
+      const seenNodes = new WeakSet();
+      let budget = 6000;
+      const isVideoUrl = (u) => typeof u === "string" && /^https?:/i.test(u) &&
+        !/\.(?:webp|jpe?g|png|gif|avif|heic)(?:\?|#|$)/i.test(u) &&
+        (/\.mp4(?:\?|#|$)/i.test(u) || /\/video\/tos\//i.test(u) || /\/aweme\/v1\/play\//i.test(u));
+      const walk = (obj, depth, gearHint, keyName) => {
+        if (budget <= 0) return;
+        if (typeof obj === "string") {
+          if (isVideoUrl(obj) && (/url|src|play|download|addr|api/i.test(String(keyName || "")) || /\/aweme\/v1\/play\//i.test(obj))) {
+            pushCand({ url: obj, size: 0, gear: gearHint || "", watermark: /download/i.test(String(keyName || "")) });
+          }
+          return;
+        }
+        if (!obj || typeof obj !== "object" || depth > 7 || seenNodes.has(obj)) return;
+        seenNodes.add(obj); budget--;
+        const gear = obj.gearName || obj.gear_name || gearHint || "";
+        const size = obj.dataSize ?? obj.data_size ?? 0;
+        const list = obj.urlList || obj.url_list;
+        if (Array.isArray(list)) list.forEach((u) => { if (isVideoUrl(u)) pushCand({ url: u, size, gear, h265: /h265|hevc/i.test(String(obj.format || obj.codec || "")), width: obj.width, height: obj.height, watermark: /download/i.test(String(keyName || "")) }); });
+        for (const k in obj) { if (k === "urlList" || k === "url_list") continue; walk(obj[k], depth + 1, gear, k); }
+      };
+      srcList.forEach((aw) => walk(aw, 0, "", ""));
+    } catch (e3) {}
+    // 一条视频地址都没有时，退回抓包到的视频地址
+    if (!cands.length) {
+      const f = currentFilter();
+      Array.from(state.videoUrlMap.values()).filter(f).forEach((it) => {
+        if (!it || it.mediaType !== "video") return;
+        if (!/^https?:/i.test(it.url || "")) return;
+        if (/\.(ts|265ts|m4s)(\?|#|$)/i.test(it.url)) return;
+        pushCand({ url: it.url, size: it.size || 0, gear: "", h265: /h265|265/i.test(it.type || "") });
+      });
+    }
+    const seen = new Set();
+    const videos = cands.filter((c) => {
+      const key = c.url.split("?")[0];
+      if (seen.has(key)) return false;
+      seen.add(key); return true;
+    }).sort((a, b) => {
+      const w = (a.watermark ? 1 : 0) - (b.watermark ? 1 : 0);
+      return w !== 0 ? w : (b.size || 0) - (a.size || 0);
+    });
+    if (!videos.length) return [];
+    const primary = srcList[0] || {};
+    const musicTitle = (primary.music && typeof primary.music.title === "string" ? primary.music.title : "") || (primary.desc || "") || "douyin";
+    const baseName = String(musicTitle).replace(/[\\/:*?"<>|]/g, "_").trim().slice(0, 50) || "douyin";
+    const out = [];
+    videos.forEach((v) => {
+      const res = (v.gear && String(v.gear).replace(/\s+/g, "")) || (v.height ? v.height + "p" : "原画");
+      out.push({
+        url: v.url, mediaType: "video", type: "抖音直链" + (v.h265 ? " H265" : ""), source: "抖音解析",
+        contentKey: sig, size: v.size || null, fileName: baseName + "_" + res.replace(/[\\/:*?"<>|]/g, "_") + ".mp4", parsed: true,
+      });
+    });
+    let musicUrl = "";
+    const mp = primary.music && (primary.music.playUrl || primary.music.play_url);
+    musicUrl = pickUrl(mp) || "";
+    if (musicUrl) {
+      const ext = (/\.(m4a|mp3|aac)(?:\?|#|$)/i.exec(musicUrl) || [, "m4a"])[1];
+      out.push({ url: musicUrl, mediaType: "audio", type: "抖音音频", source: "抖音解析", contentKey: sig, size: null, fileName: baseName + "_音频." + ext, parsed: true });
+    }
+    return out;
   }
 
   // ===== 转封装（Mediabunny，库在文件尾部内联） =====
@@ -1546,7 +1764,7 @@
 
   // ===== 面板：悬浮按钮 + 下载面板 =====
   const CHIP_COLOR = { "①": "#1677ff", "②": "#8e44ad", "③": "#ff2d55", "④": "#e6a23c", "⑤": "#67c23a" };
-  const CHIP_NAME = { "①": "① 普通直链下载", "②": "② 音频下载", "③": "③ 由抖音优化下载", "④": "④ 普通合并下载", "⑤": "⑤ 分段合并下载" };
+  const CHIP_NAME = { "①": "① 普通直链下载", "②": "② 音频下载", "③": "③ 抖音下载", "④": "④ 普通合并下载", "⑤": "⑤ 分段合并下载" };
 
   // ===== 悬浮元素拖拽：按钮与面板均可移动，位置持久化 =====
   const POS_KEY = "qidian_panel_pos";
@@ -1647,10 +1865,15 @@
     el.style.display = el.style.display === "none" ? "block" : "none";
   }
 
-  // 当前展示用源：抖音下载交给「抖音优化」插件，新起点不解析、不出条目；其余站点走抓包记录
+  // 当前展示用源：抖音解析优先，否则抓包记录（只留当前集）
   function currentSources() {
     const f = currentFilter();
-    return Array.from(state.videoUrlMap.values()).filter(f);
+    const sniffed = Array.from(state.videoUrlMap.values()).filter(f);
+    if (isDouyin()) {
+      const parsed = dySources(pageSig());
+      if (parsed.length) return parsed;
+    }
+    return sniffed;
   }
 
   // 真直链判定（沿用旧双响炮口径）：整文件媒体后缀 / 媒体 content-type / 媒体元素发起；
@@ -1659,6 +1882,7 @@
   const RE_MEDIA_CT = /^(video\/|audio\/)|mpegurl|dash\+xml|mp4|aac|mpeg|mp3|webm|ogg|opus|flac|wav/i;
   function isDirectMedia(it) {
     if (!it || isSegRecord(it)) return false;
+    if (it.parsed) return true; // 本面板解析出的抖音直链/音频，直接可下载
     if (RE_DIRECT_EXT.test(it.url)) return true;
     const ct = String(it.source || "").toLowerCase();
     if (ct && RE_MEDIA_CT.test(ct)) return true;
@@ -1708,13 +1932,13 @@
     const st = captureStatus(segItemsNow.length);
     const dy = isDouyin();
 
-    // 分类胶囊两行：上排 ①②③，下排 ④⑤；抖音页③红框点亮（由优化插件下载），①②④⑤灰显保留框位
+    // 分类胶囊两行：上排 ①②③，下排 ④⑤；抖音页③标记，①②按解析结果点亮
     const activeChips = {
-      "①": !dy && cls.hasV,
-      "②": !dy && cls.hasA,
+      "①": cls.hasV,
+      "②": cls.hasA,
       "③": dy,
-      "④": !dy && cls.vDirect.length > 0 && cls.aDirect.length > 0,
-      "⑤": !dy && cls.segMode,
+      "④": cls.vDirect.length > 0 && cls.aDirect.length > 0,
+      "⑤": cls.segMode,
     };
     const chipRow = (keys) => '<div style="text-align:center;margin:4px 0;">' + keys.map((k) => {
       const act = activeChips[k];
@@ -1729,8 +1953,8 @@
       '<div>' + chipRow(["①", "②", "③"]) + chipRow(["④", "⑤"]) + '</div>' +
       '</div>';
 
-    // 直链列表（①②）：抖音场景由优化插件处理，不抓通用直链；框位保留灰显
-    const direct = dy ? [] : sources.filter(isDirectMedia);
+    // 直链列表（①②）：抖音解析结果一并列入；只列真媒体
+    const direct = sources.filter(isDirectMedia);
     if (direct.length) {
       html += '<div style="padding:10px 14px;border-bottom:1px solid #eee;"><div style="font-weight:700;margin-bottom:6px;">地址列表（点下载 / 复制地址）</div>';
       direct.forEach((it, i) => {
@@ -1745,26 +1969,14 @@
           '</div>';
       });
       html += '</div>';
-    } else if (dy) {
-      html += '<div style="padding:10px 14px;border-bottom:1px solid #eee;color:#9aa4b2;font-size:12px;">① 普通直链 / ② 音频：抖音资源由「抖音优化」解析，本面板不抓取。</div>';
     }
 
-    // ③ 抖音：下载由「抖音优化」插件完成，新起点不出条目；提供一键唤起优化插件解析
-    if (dy) {
-      if (isLiveDouyin()) {
-        html += '<div style="padding:10px 14px;border-bottom:1px solid #eee;">' +
-          '<div style="font-weight:700;color:#ff2d55;">③ 抖音下载</div>' +
-          '<div style="color:#8a93a2;font-size:12px;line-height:1.7;margin-top:4px;">当前为直播页面：「抖音优化」插件不解析直播流，新起点也不抓直播。录播/短视频请切到作品页再解析下载。</div>' +
-          '</div>';
-      } else {
-        const hasBtn = !!findOptimizeParseBtn();
-        html += '<div style="padding:10px 14px;border-bottom:1px solid #eee;">' +
-          '<div style="font-weight:700;color:#ff2d55;">③ 抖音下载</div>' +
-          '<div style="color:#333;font-size:12px;line-height:1.7;margin:4px 0 8px;">本面板不重复解析抖音，下载由「抖音优化」插件完成。点下面按钮直接唤起它的解析：</div>' +
-          '<a href="javascript:;" data-qd-opt-parse style="display:inline-block;padding:6px 14px;border-radius:10px;font-weight:700;font-size:12px;color:#fff;text-decoration:none;background:#ff2d55;">唤起「抖音优化」解析</a>' +
-          '<div style="color:#9aa4b2;font-size:11px;margin-top:6px;">' + (hasBtn ? "已检测到优化插件解析按钮" : "未检测到优化插件按钮：请确认「抖音优化」脚本已启用，或把鼠标移到播放器控制栏点「解析信息」") + '</div>' +
-          '</div>';
-      }
+    // ③ 抖音：直播页不解析；短视频/作品由本面板直接解析直链（见上方地址列表）
+    if (dy && isLiveDouyin()) {
+      html += '<div style="padding:10px 14px;border-bottom:1px solid #eee;">' +
+        '<div style="font-weight:700;color:#ff2d55;">③ 抖音下载</div>' +
+        '<div style="color:#8a93a2;font-size:12px;line-height:1.7;margin-top:4px;">当前为直播页面：直播流不做下载。录播/短视频请切到作品页再解析下载。</div>' +
+        '</div>';
     }
 
     // ④ 普通合并（视频+音频直链对）；抖音场景框位灰显
@@ -1778,7 +1990,7 @@
     } else if (!dy && cls.vDirect.length && !cls.aDirect.length) {
       html += '<div style="padding:10px 14px;border-bottom:1px solid #eee;color:#8a93a2;font-size:12px;">未发现独立音频流，此类 mp4 多数自带声音；若下载后无声，刷新页面重播几秒再开面板重试。</div>';
     } else if (dy) {
-      html += '<div style="padding:10px 14px;border-bottom:1px solid #eee;color:#9aa4b2;font-size:12px;">④ 普通合并：抖音资源由「抖音优化」解析，本面板不合并。</div>';
+      html += '<div style="padding:10px 14px;border-bottom:1px solid #eee;color:#9aa4b2;font-size:12px;">④ 普通合并：抖音视频多为单文件直链，直接在上方地址列表下载即可。</div>';
     }
 
     // ⑤ 分段合并；抖音场景框位灰显
@@ -1799,7 +2011,7 @@
         '<div data-qd-seg-progress style="margin-top:6px;"><span style="display:inline-block;width:0%;"></span><em style="font-style:normal;color:#999;"></em></div>' +
         '</div>';
     } else if (dy) {
-      html += '<div style="padding:10px 14px;color:#9aa4b2;font-size:12px;">⑤ 分段合并：抖音资源由「抖音优化」解析，本面板不分段抓取。</div>';
+      html += '<div style="padding:10px 14px;color:#9aa4b2;font-size:12px;">⑤ 分段合并：抖音短视频为整段直链，无需分段抓取。</div>';
     }
 
     if (!sources.length && !cls.segMode) {
@@ -1820,16 +2032,6 @@
     if (sw) sw.addEventListener("click", () => toggleAuto());
     const segMerge = el.querySelector("[data-qd-seg-merge]");
     if (segMerge) segMerge.addEventListener("click", () => mergeSegments(sortedSegs(segItems()), el.querySelector("[data-qd-seg-progress]")));
-    const optParse = el.querySelector("[data-qd-opt-parse]");
-    if (optParse) optParse.addEventListener("click", () => {
-      const btn = findOptimizeParseBtn();
-      if (btn) {
-        toast("正在唤起「抖音优化」解析…", "");
-        btn.click();
-      } else {
-        toast("未找到优化插件解析按钮，请确认「抖音优化」已启用，或在播放器控制栏点「解析信息」", "warn");
-      }
-    });
   }
 
   function toggleAuto() {
