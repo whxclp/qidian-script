@@ -1811,7 +1811,7 @@
       if (e.button !== 0) return;
       // 点到链接/按钮/输入框时不拦截，保证下载等点击正常触发
       const t = e.target;
-      if (t && t.closest && t.closest("a,button,input,textarea,select,[data-qd-dl],[data-qd-merge],[data-qd-sw],[data-qd-seg-merge]")) return;
+      if (t && t.closest && t.closest("a,button,input,textarea,select,#qidian-panel-close,[data-qd-dl],[data-qd-merge],[data-qd-sw],[data-qd-seg-merge]")) return;
       dragging = true; moved = false;
       sx = e.clientX; sy = e.clientY;
       const rect = el.getBoundingClientRect();
