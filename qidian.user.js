@@ -1729,24 +1729,6 @@
       '<div>' + chipRow(["①", "②", "③"]) + chipRow(["④", "⑤"]) + '</div>' +
       '</div>';
 
-    // ③ 抖音：下载由「抖音优化」插件完成，新起点不出条目；提供一键唤起优化插件解析
-    if (dy) {
-      if (isLiveDouyin()) {
-        html += '<div style="padding:10px 14px;border-bottom:1px solid #eee;">' +
-          '<div style="font-weight:700;color:#ff2d55;">③ 抖音下载</div>' +
-          '<div style="color:#8a93a2;font-size:12px;line-height:1.7;margin-top:4px;">当前为直播页面：「抖音优化」插件不解析直播流，新起点也不抓直播。录播/短视频请切到作品页再解析下载。</div>' +
-          '</div>';
-      } else {
-        const hasBtn = !!findOptimizeParseBtn();
-        html += '<div style="padding:10px 14px;border-bottom:1px solid #eee;">' +
-          '<div style="font-weight:700;color:#ff2d55;">③ 抖音下载</div>' +
-          '<div style="color:#333;font-size:12px;line-height:1.7;margin:4px 0 8px;">本面板不重复解析抖音，下载由「抖音优化」插件完成。点下面按钮直接唤起它的解析：</div>' +
-          '<a href="javascript:;" data-qd-opt-parse style="display:inline-block;padding:6px 14px;border-radius:10px;font-weight:700;font-size:12px;color:#fff;text-decoration:none;background:#ff2d55;">唤起「抖音优化」解析</a>' +
-          '<div style="color:#9aa4b2;font-size:11px;margin-top:6px;">' + (hasBtn ? "已检测到优化插件解析按钮" : "未检测到优化插件按钮：请确认「抖音优化」脚本已启用，或把鼠标移到播放器控制栏点「解析信息」") + '</div>' +
-          '</div>';
-      }
-    }
-
     // 直链列表（①②）：抖音场景由优化插件处理，不抓通用直链；框位保留灰显
     const direct = dy ? [] : sources.filter(isDirectMedia);
     if (direct.length) {
@@ -1765,6 +1747,24 @@
       html += '</div>';
     } else if (dy) {
       html += '<div style="padding:10px 14px;border-bottom:1px solid #eee;color:#9aa4b2;font-size:12px;">① 普通直链 / ② 音频：抖音资源由「抖音优化」解析，本面板不抓取。</div>';
+    }
+
+    // ③ 抖音：下载由「抖音优化」插件完成，新起点不出条目；提供一键唤起优化插件解析
+    if (dy) {
+      if (isLiveDouyin()) {
+        html += '<div style="padding:10px 14px;border-bottom:1px solid #eee;">' +
+          '<div style="font-weight:700;color:#ff2d55;">③ 抖音下载</div>' +
+          '<div style="color:#8a93a2;font-size:12px;line-height:1.7;margin-top:4px;">当前为直播页面：「抖音优化」插件不解析直播流，新起点也不抓直播。录播/短视频请切到作品页再解析下载。</div>' +
+          '</div>';
+      } else {
+        const hasBtn = !!findOptimizeParseBtn();
+        html += '<div style="padding:10px 14px;border-bottom:1px solid #eee;">' +
+          '<div style="font-weight:700;color:#ff2d55;">③ 抖音下载</div>' +
+          '<div style="color:#333;font-size:12px;line-height:1.7;margin:4px 0 8px;">本面板不重复解析抖音，下载由「抖音优化」插件完成。点下面按钮直接唤起它的解析：</div>' +
+          '<a href="javascript:;" data-qd-opt-parse style="display:inline-block;padding:6px 14px;border-radius:10px;font-weight:700;font-size:12px;color:#fff;text-decoration:none;background:#ff2d55;">唤起「抖音优化」解析</a>' +
+          '<div style="color:#9aa4b2;font-size:11px;margin-top:6px;">' + (hasBtn ? "已检测到优化插件解析按钮" : "未检测到优化插件按钮：请确认「抖音优化」脚本已启用，或把鼠标移到播放器控制栏点「解析信息」") + '</div>' +
+          '</div>';
+      }
     }
 
     // ④ 普通合并（视频+音频直链对）；抖音场景框位灰显
