@@ -1885,13 +1885,13 @@
     el.style.display = el.style.display === "none" ? "block" : "none";
   }
 
-  // 当前展示用源：抖音解析优先，否则抓包记录（只留当前集）
+  // 当前展示用源：抖音解析优先；抖音页解析为空则不给嗅探兜底，避免页面请求误点亮分类
   function currentSources() {
     const f = currentFilter();
     const sniffed = Array.from(state.videoUrlMap.values()).filter(f);
     if (isDouyin()) {
       const parsed = dySources(pageSig());
-      if (parsed.length) return parsed;
+      return parsed.length ? parsed : [];
     }
     return sniffed;
   }
