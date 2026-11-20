@@ -1911,8 +1911,17 @@
       el.style.cssText = "position:fixed;right:16px;bottom:172px;z-index:2147483647;width:380px;max-height:70vh;overflow-y:auto;background:#fff;color:#222;border-radius:12px;box-shadow:0 8px 30px rgba(0,0,0,.35);font-size:13px;line-height:1.6;pointer-events:auto;";
       const dragHandle = document.createElement("div");
       dragHandle.id = "qidian-panel-handle";
-      dragHandle.style.cssText = "height:28px;cursor:move;display:flex;align-items:center;justify-content:center;color:#c0c6d0;font-size:12px;user-select:none;border-bottom:1px solid #f0f2f5;flex:none;";
+      dragHandle.style.cssText = "height:28px;cursor:move;display:flex;align-items:center;justify-content:center;color:#c0c6d0;font-size:12px;user-select:none;border-bottom:1px solid #f0f2f5;flex:none;position:relative;";
       dragHandle.textContent = "⋮⋮ 拖动移动面板";
+      const closeBtn = document.createElement("div");
+      closeBtn.id = "qidian-panel-close";
+      closeBtn.title = "关闭面板";
+      closeBtn.style.cssText = "position:absolute;right:10px;top:50%;transform:translateY(-50%);width:20px;height:20px;line-height:18px;text-align:center;border-radius:50%;color:#888;font-size:15px;cursor:pointer;user-select:none;";
+      closeBtn.textContent = "✕";
+      closeBtn.addEventListener("mouseenter", () => { closeBtn.style.background = "#f0f2f5"; closeBtn.style.color = "#333"; });
+      closeBtn.addEventListener("mouseleave", () => { closeBtn.style.background = ""; closeBtn.style.color = "#888"; });
+      closeBtn.addEventListener("click", (ev) => { ev.stopPropagation(); el.style.display = "none"; });
+      dragHandle.appendChild(closeBtn);
       const body = document.createElement("div");
       body.id = "qidian-panel-body";
       el.appendChild(dragHandle);
