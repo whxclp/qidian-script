@@ -1708,7 +1708,7 @@
     const st = captureStatus(segItemsNow.length);
     const dy = isDouyin();
 
-    // 分类胶囊两行：上排 ①②③，下排 ④⑤；抖音场景③仅作提示，下载由「抖音优化」完成，其余分类隐藏
+    // 分类胶囊两行：上排 ①②③，下排 ④⑤；抖音页③红框点亮（由优化插件下载），①②④⑤灰显保留框位
     const activeChips = {
       "①": !dy && cls.hasV,
       "②": !dy && cls.hasA,
@@ -1729,21 +1729,25 @@
       '<div>' + chipRow(["①", "②", "③"]) + chipRow(["④", "⑤"]) + '</div>' +
       '</div>';
 
-    // 抖音：下载由「抖音优化」插件完成，新起点不出条目；提供一键唤起优化插件解析
+    // ③ 抖音：下载由「抖音优化」插件完成，新起点不出条目；提供一键唤起优化插件解析
     if (dy) {
       if (isLiveDouyin()) {
-        html += '<div style="padding:12px 14px;color:#8a93a2;font-size:12px;line-height:1.7;">当前为直播页面：「抖音优化」插件不解析直播流，新起点也不抓直播。录播/短视频请切到作品页再解析下载。</div>';
+        html += '<div style="padding:10px 14px;border-bottom:1px solid #eee;">' +
+          '<div style="font-weight:700;color:#ff2d55;">③ 抖音下载</div>' +
+          '<div style="color:#8a93a2;font-size:12px;line-height:1.7;margin-top:4px;">当前为直播页面：「抖音优化」插件不解析直播流，新起点也不抓直播。录播/短视频请切到作品页再解析下载。</div>' +
+          '</div>';
       } else {
         const hasBtn = !!findOptimizeParseBtn();
-        html += '<div style="padding:12px 14px;border-bottom:1px solid #eee;">' +
-          '<div style="color:#333;font-size:12px;line-height:1.7;margin-bottom:8px;">本面板不重复解析抖音，下载由「抖音优化」插件完成。点下面按钮直接唤起它的解析：</div>' +
+        html += '<div style="padding:10px 14px;border-bottom:1px solid #eee;">' +
+          '<div style="font-weight:700;color:#ff2d55;">③ 抖音下载</div>' +
+          '<div style="color:#333;font-size:12px;line-height:1.7;margin:4px 0 8px;">本面板不重复解析抖音，下载由「抖音优化」插件完成。点下面按钮直接唤起它的解析：</div>' +
           '<a href="javascript:;" data-qd-opt-parse style="display:inline-block;padding:6px 14px;border-radius:10px;font-weight:700;font-size:12px;color:#fff;text-decoration:none;background:#ff2d55;">唤起「抖音优化」解析</a>' +
           '<div style="color:#9aa4b2;font-size:11px;margin-top:6px;">' + (hasBtn ? "已检测到优化插件解析按钮" : "未检测到优化插件按钮：请确认「抖音优化」脚本已启用，或把鼠标移到播放器控制栏点「解析信息」") + '</div>' +
           '</div>';
       }
     }
 
-    // 直链列表（①②）：抖音场景由优化插件处理，不显示通用直链列表；其余场景只列真媒体
+    // 直链列表（①②）：抖音场景由优化插件处理，不抓通用直链；框位保留灰显
     const direct = dy ? [] : sources.filter(isDirectMedia);
     if (direct.length) {
       html += '<div style="padding:10px 14px;border-bottom:1px solid #eee;"><div style="font-weight:700;margin-bottom:6px;">地址列表（点下载 / 复制地址）</div>';
@@ -1759,9 +1763,11 @@
           '</div>';
       });
       html += '</div>';
+    } else if (dy) {
+      html += '<div style="padding:10px 14px;border-bottom:1px solid #eee;color:#9aa4b2;font-size:12px;">① 普通直链 / ② 音频：抖音资源由「抖音优化」解析，本面板不抓取。</div>';
     }
 
-    // ④ 普通合并（视频+音频直链对）；抖音场景不显示
+    // ④ 普通合并（视频+音频直链对）；抖音场景框位灰显
     if (!dy && cls.vDirect.length && cls.aDirect.length) {
       const v = cls.vDirect[0]; const a = cls.aDirect[0];
       html += '<div style="padding:10px 14px;border-bottom:1px solid #eee;">' +
@@ -1769,11 +1775,13 @@
         '<div style="color:#666;font-size:12px;margin:4px 0;">视频流 + 音频流，浏览器内直接合成有声 mp4（无需开关）</div>' +
         '<a href="javascript:;" data-qd-merge style="display:inline-block;margin-top:4px;padding:4px 12px;border-radius:10px;font-weight:700;font-size:12px;color:#fff;background:#e6a23c;text-decoration:none;">合并并下载</a>' +
         '</div>';
-    } else if (cls.vDirect.length && !cls.aDirect.length) {
+    } else if (!dy && cls.vDirect.length && !cls.aDirect.length) {
       html += '<div style="padding:10px 14px;border-bottom:1px solid #eee;color:#8a93a2;font-size:12px;">未发现独立音频流，此类 mp4 多数自带声音；若下载后无声，刷新页面重播几秒再开面板重试。</div>';
+    } else if (dy) {
+      html += '<div style="padding:10px 14px;border-bottom:1px solid #eee;color:#9aa4b2;font-size:12px;">④ 普通合并：抖音资源由「抖音优化」解析，本面板不合并。</div>';
     }
 
-    // ⑤ 分段合并；抖音场景不显示
+    // ⑤ 分段合并；抖音场景框位灰显
     if (!dy && cls.segMode) {
       const auto = autoOn();
       const swBg = auto ? "#67c23a" : "#c0c6cf";
@@ -1790,6 +1798,8 @@
           : '<div>已抓 <b>' + segItemsNow.length + '</b> 段，' + escapeHtml(preloadText(segItemsNow)) + '，未抓全</div><div>需听完才能抓全合并，拖进度条无效</div>') +
         '<div data-qd-seg-progress style="margin-top:6px;"><span style="display:inline-block;width:0%;"></span><em style="font-style:normal;color:#999;"></em></div>' +
         '</div>';
+    } else if (dy) {
+      html += '<div style="padding:10px 14px;color:#9aa4b2;font-size:12px;">⑤ 分段合并：抖音资源由「抖音优化」解析，本面板不分段抓取。</div>';
     }
 
     if (!sources.length && !cls.segMode) {
