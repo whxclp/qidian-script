@@ -1911,13 +1911,16 @@
       el.style.cssText = "position:fixed;right:16px;bottom:172px;z-index:2147483647;width:380px;max-height:70vh;overflow-y:auto;background:#fff;color:#222;border-radius:12px;box-shadow:0 8px 30px rgba(0,0,0,.35);font-size:13px;line-height:1.6;pointer-events:auto;";
       const dragHandle = document.createElement("div");
       dragHandle.id = "qidian-panel-handle";
-      dragHandle.style.cssText = "height:22px;cursor:move;display:flex;align-items:center;justify-content:center;color:#c0c6d0;font-size:12px;user-select:none;";
+      dragHandle.style.cssText = "height:28px;cursor:move;display:flex;align-items:center;justify-content:center;color:#c0c6d0;font-size:12px;user-select:none;border-bottom:1px solid #f0f2f5;flex:none;";
       dragHandle.textContent = "⋮⋮ 拖动移动面板";
+      const body = document.createElement("div");
+      body.id = "qidian-panel-body";
       el.appendChild(dragHandle);
+      el.appendChild(body);
       document.body.appendChild(el);
       applyPos(el, "panel");
       makeDraggable(el, "panel", dragHandle);
-      state.panel = { el, refreshTimer: null };
+      state.panel = { el, body, refreshTimer: null };
     }
     paintPanel(el);
     // 定时刷新状态（标题/段数/覆盖/开关态）
@@ -2018,20 +2021,21 @@
       html += '<div style="padding:14px;color:#999;">🔍 正在判断下载类型，请先播放几秒…</div>';
     }
 
-    el.innerHTML = html;
+    const body = state.panel.body || el;
+    body.innerHTML = html;
     // 挂事件
-    el.querySelectorAll("[data-qd-dl]").forEach((a) => a.addEventListener("click", () => {
+    body.querySelectorAll("[data-qd-dl]").forEach((a) => a.addEventListener("click", () => {
       const it = direct[Number(a.getAttribute("data-qd-dl"))]; if (it) downloadDirect(it, null);
     }));
-    el.querySelectorAll("[data-qd-copy]").forEach((a) => a.addEventListener("click", () => {
+    body.querySelectorAll("[data-qd-copy]").forEach((a) => a.addEventListener("click", () => {
       const it = direct[Number(a.getAttribute("data-qd-copy"))]; if (it) { copyText(it.url); toast("地址已复制", ""); }
     }));
-    const mergeBtn = el.querySelector("[data-qd-merge]");
+    const mergeBtn = body.querySelector("[data-qd-merge]");
     if (mergeBtn) mergeBtn.addEventListener("click", () => mergeDirectPair(cls.vDirect[0], cls.aDirect[0]));
-    const sw = el.querySelector("[data-qd-sw]");
+    const sw = body.querySelector("[data-qd-sw]");
     if (sw) sw.addEventListener("click", () => toggleAuto());
-    const segMerge = el.querySelector("[data-qd-seg-merge]");
-    if (segMerge) segMerge.addEventListener("click", () => mergeSegments(sortedSegs(segItems()), el.querySelector("[data-qd-seg-progress]")));
+    const segMerge = body.querySelector("[data-qd-seg-merge]");
+    if (segMerge) segMerge.addEventListener("click", () => mergeSegments(sortedSegs(segItems()), body.querySelector("[data-qd-seg-progress]")));
   }
 
   function toggleAuto() {
