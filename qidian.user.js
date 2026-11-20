@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         新起点
 // @namespace    local.qnyh.qidian
-// @version      3.1.0
+// @version      3.1.1
 // @description  新起点视频下载：纯观看不主动下载，开开关才抓；必须真实听完到片尾才允许合并；换流/换集强制清锁定残留。
 // @license      GPL-3.0-only
 // @updateURL    https://raw.githubusercontent.com/whxclp/qidian-script/main/qidian.user.js
@@ -24,7 +24,7 @@
   const _unsafe = (typeof unsafeWindow !== "undefined" ? unsafeWindow : window);
   const _GMxhr = (typeof GM_xmlhttpRequest === "function" ? GM_xmlhttpRequest : null);
   const _GMinfo = (typeof GM_info !== "undefined" ? GM_info : null);
-  const VERSION = (_GMinfo && _GMinfo.script && _GMinfo.script.version) || "3.1.0";
+  const VERSION = (_GMinfo && _GMinfo.script && _GMinfo.script.version) || "3.1.1";
 
   // 页面加载第一时间：下载开关默认关，清掉旧版持久化状态
   try { localStorage.setItem("qidian_auto", "0"); } catch (e) {}
