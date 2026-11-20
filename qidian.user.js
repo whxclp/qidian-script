@@ -1568,6 +1568,9 @@
     let sx = 0, sy = 0, ox = 0, oy = 0, dragging = false, moved = false;
     const start = (e) => {
       if (e.button !== 0) return;
+      // 点到链接/按钮/输入框时不拦截，保证下载等点击正常触发
+      const t = e.target;
+      if (t && t.closest && t.closest("a,button,input,textarea,select,[data-qd-dl],[data-qd-merge],[data-qd-sw],[data-qd-seg-merge]")) return;
       dragging = true; moved = false;
       sx = e.clientX; sy = e.clientY;
       const rect = el.getBoundingClientRect();
@@ -1670,7 +1673,7 @@
     if (!el) {
       el = document.createElement("div");
       el.id = "qidian-panel";
-      el.style.cssText = "position:fixed;right:16px;bottom:172px;z-index:2147483647;width:380px;max-height:70vh;overflow-y:auto;background:#fff;color:#222;border-radius:12px;box-shadow:0 8px 30px rgba(0,0,0,.35);font-size:13px;line-height:1.6;";
+      el.style.cssText = "position:fixed;right:16px;bottom:172px;z-index:2147483647;width:380px;max-height:70vh;overflow-y:auto;background:#fff;color:#222;border-radius:12px;box-shadow:0 8px 30px rgba(0,0,0,.35);font-size:13px;line-height:1.6;pointer-events:auto;";
       const dragHandle = document.createElement("div");
       dragHandle.id = "qidian-panel-handle";
       dragHandle.style.cssText = "height:22px;cursor:move;display:flex;align-items:center;justify-content:center;color:#c0c6d0;font-size:12px;user-select:none;";
