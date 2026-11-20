@@ -4,8 +4,8 @@
 // @version      3.1.0
 // @description  新起点视频下载：纯观看不主动下载，开开关才抓；必须真实听完到片尾才允许合并；换流/换集强制清锁定残留。
 // @license      GPL-3.0-only
-// @updateURL    https://raw.githubusercontent.com/whxclp/qidian-script/main/新起点.user.js
-// @downloadURL https://raw.githubusercontent.com/whxclp/qidian-script/main/新起点.user.js
+// @updateURL    https://raw.githubusercontent.com/whxclp/qidian-script/main/qidian.user.js
+// @downloadURL https://raw.githubusercontent.com/whxclp/qidian-script/main/qidian.user.js
 // @match        http://*/*
 // @match        https://*/*
 // @grant        GM_xmlhttpRequest
