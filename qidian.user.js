@@ -657,6 +657,8 @@
     const markEnded = (src) => {
       try {
         if (state.__endedAt) return;
+        // 抖音短视频为整段直链，不走分段抓取/合并，不锁播放器、不拦换页
+        if (isDouyin() || isLiveDouyin()) { log.info(src + " 抖音直链页，跳过分段抓全锁定"); return; }
         const dur0 = isFinite(v.duration) ? v.duration : 0;
         const minInc = Math.max(60, dur0 * 0.6);
         const nearEnd = dur0 > 5 && v.currentTime >= dur0 - 3;
@@ -1007,6 +1009,7 @@
   // 自动合并：抓全（真实听完到片尾）后触发
   function autoMergeTick() {
     if (!autoOn() || state.merging) return;
+    if (isDouyin()) return; // 抖音整段直链，无需分段合并
     const items = sortedSegs(segItems());
     const st = captureStatus(items.length);
     if (st.complete) {
@@ -1018,6 +1021,8 @@
   // ===== 抓全状态判定 =====
   function captureStatus(segN) {
     const segText = "已抓 " + (segN || 0) + " 段";
+    // 抖音短视频为整段直链，无分段抓取概念，不参与抓全判定
+    if (isDouyin()) return { complete: false, pct: 0, text: "抖音直链，无需分段抓取" };
     let played = 0, dur = 0, pct = 0, nearEnd = false;
     try {
       const v = mainVideo();
