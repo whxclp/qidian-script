@@ -1956,13 +1956,15 @@
     const st = captureStatus(segItemsNow.length);
     const dy = isDouyin();
 
-    // 分类胶囊两行：上排 ①②③，下排 ④⑤；抖音页③标记，①②按解析结果点亮
+    // 分类胶囊两行：上排 ①②③，下排 ④⑤；抖音页③标记，①②仅按本面板解析出的直链点亮，④⑤强制灰显
+    const dyParsedV = cls.vDirect.some((x) => x.parsed);
+    const dyParsedA = cls.aDirect.some((x) => x.parsed);
     const activeChips = {
-      "①": cls.hasV,
-      "②": cls.hasA,
+      "①": dy ? dyParsedV : cls.hasV,
+      "②": dy ? dyParsedA : cls.hasA,
       "③": dy,
-      "④": cls.vDirect.length > 0 && cls.aDirect.length > 0,
-      "⑤": cls.segMode,
+      "④": !dy && cls.vDirect.length > 0 && cls.aDirect.length > 0,
+      "⑤": !dy && cls.segMode,
     };
     const chipRow = (keys) => '<div style="text-align:center;margin:4px 0;">' + keys.map((k) => {
       const act = activeChips[k];
@@ -1977,8 +1979,8 @@
       '<div>' + chipRow(["①", "②", "③"]) + chipRow(["④", "⑤"]) + '</div>' +
       '</div>';
 
-    // 直链列表（①②）：抖音解析结果一并列入；只列真媒体
-    const direct = sources.filter(isDirectMedia);
+    // 直链列表（①②）：抖音解析结果一并列入；只列真媒体；抖音页仅列本面板解析出的条目
+    const direct = sources.filter((it) => isDirectMedia(it) && (!dy || it.parsed));
     if (direct.length) {
       html += '<div style="padding:10px 14px;border-bottom:1px solid #eee;"><div style="font-weight:700;margin-bottom:6px;">地址列表（点下载 / 复制地址）</div>';
       direct.forEach((it, i) => {
