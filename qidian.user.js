@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         新起点
 // @namespace    local.qnyh.qidian
-// @version      3.1.1
+// @version      3.1.2
 // @description  新起点视频下载：纯观看不主动下载，开开关才抓；必须真实听完到片尾才允许合并；换流/换集强制清锁定残留。
 // @license      GPL-3.0-only
 // @updateURL    https://raw.githubusercontent.com/whxclp/qidian-script/main/qidian.user.js
@@ -24,7 +24,7 @@
   const _unsafe = (typeof unsafeWindow !== "undefined" ? unsafeWindow : window);
   const _GMxhr = (typeof GM_xmlhttpRequest === "function" ? GM_xmlhttpRequest : null);
   const _GMinfo = (typeof GM_info !== "undefined" ? GM_info : null);
-  const VERSION = (_GMinfo && _GMinfo.script && _GMinfo.script.version) || "3.1.1";
+  const VERSION = (_GMinfo && _GMinfo.script && _GMinfo.script.version) || "3.1.2";
 
   // 页面加载第一时间：下载开关默认关，清掉旧版持久化状态
   try { localStorage.setItem("qidian_auto", "0"); } catch (e) {}
@@ -508,9 +508,7 @@
             if (isQy && !/\.(ts|m4s|mp4|m3u8|mpd|m4a|mp3)(\?|#|$)/i.test(responseUrl)) {
               let ct = "";
               try { ct = String((response.headers && response.headers.get && response.headers.get("content-type")) || ""); } catch (e) {}
-              if (/json/i.test(ct)) response.clone().text().then((t) => { captureQyTitle(t); if (isDouyin()) captureDyAweme(t); }).catch(() => {});
-            } else if (isDouyin && /aweme|feed|detail|video/i.test(responseUrl)) {
-              response.clone().text().then(captureDyAweme).catch(() => {});
+              if (/json/i.test(ct)) response.clone().text().then((t) => { captureQyTitle(t); }).catch(() => {});
             }
           } catch (e) {}
           return response;
@@ -550,12 +548,6 @@
             try { t = !xhr.responseType || xhr.responseType === "text" ? xhr.responseText : ""; } catch (e) {}
             if (!t && xhr.response && typeof xhr.response === "object") { try { t = JSON.stringify(xhr.response); } catch (e) {} }
             if (t && /albumName|album_name|videoName|video_name|albumTitle|videoTitle/.test(t)) captureQyTitle(t);
-          }
-          if (isDouyin() && /aweme|feed|detail|video/i.test(responseUrl)) {
-            let t2 = "";
-            try { t2 = !xhr.responseType || xhr.responseType === "text" ? xhr.responseText : ""; } catch (e) {}
-            if (!t2 && xhr.response && typeof xhr.response === "object") { try { t2 = JSON.stringify(xhr.response); } catch (e) {} }
-            if (t2) captureDyAweme(t2);
           }
         } catch (e) {}
       });
@@ -1059,221 +1051,7 @@
     return "时长 " + fmtTime(dur) + "，已播 " + fmtTime(played) + "，还剩 " + fmtTime(left);
   }
 
-  // ===== React fiber 通用探测（不依赖外部 utils 库） =====
-  const FIBER_KEYS = ["__reactFiber$", "__reactInternalInstance$"];
-  const PROPS_KEYS = ["__reactProps$"];
-  function reactFiberOf(el) {
-    if (!el) return null;
-    for (const k of FIBER_KEYS) {
-      for (const key in el) {
-        if (key.indexOf(k) === 0) return el[key];
-      }
-    }
-    return null;
-  }
-  function reactPropsOf(el) {
-    if (!el) return null;
-    for (const k of PROPS_KEYS) {
-      for (const key in el) {
-        if (key.indexOf(k) === 0) return el[key];
-      }
-    }
-    return null;
-  }
-  // 沿 fiber 向上找含目标属性的节点（限深 12），callback 返回 { isFind, data }
-  function queryFiber(fiber, cb, maxDepth) {
-    let node = fiber, depth = 0;
-    while (node && depth < (maxDepth || 12)) {
-      const r = cb(node);
-      if (r && r.isFind) return r.data;
-      node = node.return || (node.alternate && node.alternate.return) || null;
-      depth++;
-    }
-    return null;
-  }
-
-  // ===== 抖音：解析当前视频的无水印直链 + 音频（照搬抖音优化口径） =====
-  const dyRaw = new Map(); // awemeId -> { at, aw }
   function isDouyin() { return /douyin|iesdouyin/.test(HOST); }
-
-  function captureDyAweme(text) {
-    if (!text || typeof text !== "string" || text.length > 12000000) return;
-    let j;
-    try { j = JSON.parse(text); } catch (e) { return; }
-    const put = (aw) => {
-      if (!aw || typeof aw !== "object") return;
-      const id = aw.aweme_id || aw.awemeId;
-      if (!id) return;
-      dyRaw.set(String(id), { at: Date.now(), aw });
-    };
-    try {
-      put(j.aweme_detail);
-      if (Array.isArray(j.aweme_list)) j.aweme_list.forEach(put);
-      if (Array.isArray(j.data)) j.data.forEach((it) => { if (it && typeof it === "object") put(it.aweme_info || it.aweme_detail || it.aweme || it); });
-      if (Array.isArray(j.cards)) j.cards.forEach((c) => { if (c && typeof c === "object") put(c.aweme_info || c.aweme_detail || c.aweme || c); });
-    } catch (e2) {}
-    while (dyRaw.size > 30) dyRaw.delete(dyRaw.keys().next().value);
-  }
-
-  function dyActiveAweme() {
-    try {
-      let v = document.querySelector('[data-e2e="feed-active-video"] video') || document.querySelector('[data-e2e="video-detail"] video');
-      if (!v) {
-        const list = Array.from(document.querySelectorAll("video")).filter((x) => { const r = x.getBoundingClientRect(); return r.width > 120 && r.height > 80; });
-        v = list.find((x) => !x.paused) || list[0];
-      }
-      const fibers = [];
-      try {
-        const pcs = Array.from(document.querySelectorAll(".basePlayerContainer"));
-        const pc = pcs.find((c) => { const x = c.querySelector("video"); return x && !x.paused; }) ||
-          pcs.find((c) => { const r = c.getBoundingClientRect(); return r.width > 200 && r.height > 150; }) || pcs[pcs.length - 1];
-        fibers.push(reactFiberOf(pc));
-      } catch (e2) {}
-      fibers.push(reactFiberOf(v));
-      for (const f of fibers) {
-        if (!f) continue;
-        const info = queryFiber(f, (target) => {
-          const mp = target && target.memoizedProps;
-          if (mp && typeof mp === "object") {
-            if (mp.awemeInfo && typeof mp.awemeInfo === "object") return { isFind: true, data: mp.awemeInfo };
-            if (mp.originData && typeof mp.originData === "object") return { isFind: true, data: mp.originData };
-            return { isFind: false, data: target.return || null };
-          }
-          return { isFind: false, data: null };
-        });
-        if (info) return info;
-      }
-    } catch (e) {}
-    return null;
-  }
-
-  function dyRawAweme() {
-    try {
-      if (!dyRaw.size) return null;
-      const sp = new URL(location.href).searchParams;
-      let id = sp.get("modal_id") || sp.get("aweme_id") || sp.get("vid") || "";
-      if (!id) { const m = /\/video\/(\d{8,})/.exec(location.pathname); if (m) id = m[1]; }
-      if (id && dyRaw.has(id)) return dyRaw.get(id).aw;
-      const dom = dyActiveAweme();
-      const want = String((dom && (dom.desc || (dom.music && dom.music.title))) || "").trim();
-      if (want) {
-        for (const rec of dyRaw.values()) {
-          const aw = (rec && rec.aw) || {};
-          const t = String(aw.desc || (aw.music && aw.music.title) || "");
-          if (t && (t.indexOf(want) >= 0 || want.indexOf(t.slice(0, 20)) >= 0)) return aw;
-        }
-      }
-      if (dyRaw.size === 1) return dyRaw.values().next().value.aw;
-    } catch (e) {}
-    return null;
-  }
-
-  function dySources(sig) {
-    if (!isDouyin()) return [];
-    const domAweme = dyActiveAweme();
-    const rawAweme = dyRawAweme();
-    const srcList = [];
-    if (rawAweme) srcList.push(rawAweme);
-    if (domAweme && domAweme !== rawAweme) srcList.push(domAweme);
-    if (!srcList.length) return [];
-
-    const pickUrl = (node) => {
-      if (!node || typeof node !== "object") return "";
-      const list = node.urlList || node.url_list;
-      if (Array.isArray(list)) { const hit = list.find((u) => typeof u === "string" && u); if (hit) return hit; }
-      if (typeof node.url === "string" && node.url) return node.url;
-      return "";
-    };
-    const normBitRate = (it) => {
-      if (!it || typeof it !== "object") return null;
-      const addr = it.playAddr || it.play_addr || it.playApi || it.play_api || it;
-      const url = pickUrl(addr) || pickUrl(it.downloadAddr || it.download_addr);
-      if (!url) return null;
-      return {
-        url,
-        size: (addr && (addr.dataSize ?? addr.data_size)) || it.dataSize || it.data_size || 0,
-        gear: it.gearName || it.gear_name || "",
-        h265: !!(it.isH265 || it.is_h265),
-        width: addr && addr.width,
-        height: addr && addr.height,
-      };
-    };
-    const cands = [];
-    const pushCand = (c) => { if (c && c.url) cands.push(c); };
-    srcList.forEach((aw) => {
-      try {
-        const rawV = (aw && aw.video) || {};
-        [Array.isArray(rawV.bitRateList) ? rawV.bitRateList : [], Array.isArray(rawV.bit_rate) ? rawV.bit_rate : []]
-          .forEach((list) => list.forEach((it) => pushCand(normBitRate(it))));
-        pushCand(normBitRate(rawV.playAddr || rawV.play_addr));
-        pushCand(normBitRate(rawV.downloadAddr || rawV.download_addr));
-      } catch (e2) {}
-    });
-    // 兜底深度扫描：收集整棵树里像播放地址的 URL
-    try {
-      const seenNodes = new WeakSet();
-      let budget = 6000;
-      const isVideoUrl = (u) => typeof u === "string" && /^https?:/i.test(u) &&
-        !/\.(?:webp|jpe?g|png|gif|avif|heic)(?:\?|#|$)/i.test(u) &&
-        (/\.mp4(?:\?|#|$)/i.test(u) || /\/video\/tos\//i.test(u) || /\/aweme\/v1\/play\//i.test(u));
-      const walk = (obj, depth, gearHint, keyName) => {
-        if (budget <= 0) return;
-        if (typeof obj === "string") {
-          if (isVideoUrl(obj) && (/url|src|play|download|addr|api/i.test(String(keyName || "")) || /\/aweme\/v1\/play\//i.test(obj))) {
-            pushCand({ url: obj, size: 0, gear: gearHint || "", watermark: /download/i.test(String(keyName || "")) });
-          }
-          return;
-        }
-        if (!obj || typeof obj !== "object" || depth > 7 || seenNodes.has(obj)) return;
-        seenNodes.add(obj); budget--;
-        const gear = obj.gearName || obj.gear_name || gearHint || "";
-        const size = obj.dataSize ?? obj.data_size ?? 0;
-        const list = obj.urlList || obj.url_list;
-        if (Array.isArray(list)) list.forEach((u) => { if (isVideoUrl(u)) pushCand({ url: u, size, gear, h265: /h265|hevc/i.test(String(obj.format || obj.codec || "")), width: obj.width, height: obj.height, watermark: /download/i.test(String(keyName || "")) }); });
-        for (const k in obj) { if (k === "urlList" || k === "url_list") continue; walk(obj[k], depth + 1, gear, k); }
-      };
-      srcList.forEach((aw) => walk(aw, 0, "", ""));
-    } catch (e3) {}
-    // 一条视频地址都没有时，退回抓包到的视频地址
-    if (!cands.length) {
-      const f = currentFilter();
-      Array.from(state.videoUrlMap.values()).filter(f).forEach((it) => {
-        if (!it || it.mediaType !== "video") return;
-        if (!/^https?:/i.test(it.url || "")) return;
-        if (/\.(ts|265ts|m4s)(\?|#|$)/i.test(it.url)) return;
-        pushCand({ url: it.url, size: it.size || 0, gear: "", h265: /h265|265/i.test(it.type || "") });
-      });
-    }
-    const seen = new Set();
-    const videos = cands.filter((c) => {
-      const key = c.url.split("?")[0];
-      if (seen.has(key)) return false;
-      seen.add(key); return true;
-    }).sort((a, b) => {
-      const w = (a.watermark ? 1 : 0) - (b.watermark ? 1 : 0);
-      return w !== 0 ? w : (b.size || 0) - (a.size || 0);
-    });
-    if (!videos.length) return [];
-    const primary = srcList[0] || {};
-    const musicTitle = (primary.music && typeof primary.music.title === "string" ? primary.music.title : "") || (primary.desc || "") || "douyin";
-    const baseName = String(musicTitle).replace(/[\\/:*?"<>|]/g, "_").trim().slice(0, 50) || "douyin";
-    const out = [];
-    videos.forEach((v) => {
-      const res = (v.gear && String(v.gear).replace(/\s+/g, "")) || (v.height ? v.height + "p" : "原画");
-      out.push({
-        url: v.url, mediaType: "video", type: "抖音直链" + (v.h265 ? " H265" : ""), source: "抖音解析",
-        contentKey: sig, size: v.size || null, fileName: baseName + "_" + res.replace(/[\\/:*?"<>|]/g, "_") + ".mp4", parsed: true,
-      });
-    });
-    let musicUrl = "";
-    const mp = primary.music && (primary.music.playUrl || primary.music.play_url);
-    musicUrl = pickUrl(mp) || "";
-    if (musicUrl) {
-      const ext = (/\.(m4a|mp3|aac)(?:\?|#|$)/i.exec(musicUrl) || [, "m4a"])[1];
-      out.push({ url: musicUrl, mediaType: "audio", type: "抖音音频", source: "抖音解析", contentKey: sig, size: null, fileName: baseName + "_音频." + ext, parsed: true });
-    }
-    return out;
-  }
 
   // ===== 转封装（Mediabunny，库在文件尾部内联） =====
   function MB() { return globalThis.Mediabunny; }
@@ -1855,15 +1633,10 @@
     el.style.display = el.style.display === "none" ? "block" : "none";
   }
 
-  // 当前展示用源：抖音解析优先，否则抓包记录（只留当前集）
+  // 当前展示用源：抖音下载交给「抖音优化」插件，新起点不解析、不出条目；其余站点走抓包记录
   function currentSources() {
     const f = currentFilter();
-    const sniffed = Array.from(state.videoUrlMap.values()).filter(f);
-    if (isDouyin()) {
-      const parsed = dySources(pageSig());
-      if (parsed.length) return parsed;
-    }
-    return sniffed;
+    return Array.from(state.videoUrlMap.values()).filter(f);
   }
 
   // 真直链判定（沿用旧双响炮口径）：整文件媒体后缀 / 媒体 content-type / 媒体元素发起；
@@ -1921,11 +1694,11 @@
     const st = captureStatus(segItemsNow.length);
     const dy = isDouyin();
 
-    // 分类胶囊两行：上排 ①②③，下排 ④⑤；抖音场景只亮③，其余分类不显示
+    // 分类胶囊两行：上排 ①②③，下排 ④⑤；抖音场景③仅作提示，下载由「抖音优化」完成，其余分类隐藏
     const activeChips = {
       "①": !dy && cls.hasV,
       "②": !dy && cls.hasA,
-      "③": dy && cls.hasV,
+      "③": dy,
       "④": !dy && cls.vDirect.length > 0 && cls.aDirect.length > 0,
       "⑤": !dy && cls.segMode,
     };
@@ -1941,6 +1714,11 @@
       '<div style="margin-top:4px;color:#333;">当前：' + escapeHtml(trackTitle() || "未识别") + '</div>' +
       '<div>' + chipRow(["①", "②", "③"]) + chipRow(["④", "⑤"]) + '</div>' +
       '</div>';
+
+    // 抖音：下载由「抖音优化」插件完成，新起点不出条目
+    if (dy) {
+      html += '<div style="padding:12px 14px;color:#8a93a2;font-size:12px;line-height:1.7;">抖音视频/音频下载请使用「抖音优化」插件的解析按钮，本面板不重复解析。</div>';
+    }
 
     // 直链列表（①②③）：抖音场景只走③抖音解析，不显示通用直链列表；其余场景只列真媒体
     const direct = dy ? [] : sources.filter(isDirectMedia);
